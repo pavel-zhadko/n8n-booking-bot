@@ -1,0 +1,170 @@
+{
+  "name": "Оповещение о статусе заявки",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_ID>",
+          "mode": "list",
+          "cachedResultName": "Заявки",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Лист1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "event": "rowUpdate",
+        "options": {
+          "columnsToWatch": [
+            "Статус"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d10a8d27-9aa8-474d-af12-cfe773881c6f",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "NOYektXzsmWYJJ8B",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fb19c24c-037d-4718-a405-a05ca6a2bd63",
+              "leftValue": "={{ $json[\"Статус\"] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        192,
+        0
+      ],
+      "id": "1cb9b6bf-e3db-4071-8601-e0e6742af269",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst status = row[\"Статус\"];\nconst name = row[\"Имя\"] || \"Клиент\";\n\nconst texts = {\n  \"Обработана\": `✅ ${name}, ваша заявка принята в работу. Менеджер свяжется с вами в ближайшее время.`,\n  \"В работе\":   `⏳ ${name}, ваша заявка сейчас обрабатывается.`,\n  \"Отклонена\":  `❌ ${name}, к сожалению, мы не сможем принять вашу заявку.`\n};\n\nreturn [{\n  json: {\n    chatId: row[\"ID чата\"],\n    text: texts[status] || `ℹ️ ${name}, статус вашей заявки изменён: ${status}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        0
+      ],
+      "id": "4524ba34-a726-4a3d-bb74-e6a29565f08e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        0
+      ],
+      "id": "5a7a5ab3-00be-4134-8eb3-1f50332eb4b3",
+      "name": "Send a text message",
+      "webhookId": "f81d9b52-9d46-4f50-bee9-8b67c8a75e1d",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "18d64909-fef0-467b-a57c-abab73c13589",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "01454449cc93839c9f457c217668635ce3bca60688b0690766b43b061668fea7"
+  },
+  "nodeGroups": [],
+  "id": "Qq1EMEKJdVvgdU3C",
+  "tags": []
+}

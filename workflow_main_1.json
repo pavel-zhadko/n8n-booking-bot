@@ -1,0 +1,1307 @@
+{
+  "name": "Заявки тест",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -608,
+        336
+      ],
+      "id": "1e8e47b8-599a-4b71-a63c-e0f73ddd9c04",
+      "name": "Telegram Trigger",
+      "webhookId": "02f2249c-9203-45a8-b7e2-206a757633f4",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем текст сообщения и ID чата\nconst text = $input.first().json.message.text;\nconst chatId = $input.first().json.message.chat.id;\nconst userName = $input.first().json.message.from.first_name || 'Клиент';\nconst userId = $input.first().json.message.from.id;\n\n// НОВАЯ ПРОВЕРКА: Если это команда (начинается с \"/\"), обрабатываем\nif (text && text.startsWith('/')) {\n  // Команда /start — отправляем инструкцию\n  if (text === '/start') {\n    return [{\n      json: {\n        isCommand: true,  // boolean без кавычек\n        commandType: 'start',\n        commandResponse: \"👋 Здравствуйте!\\n\\n📝 Чтобы оставить заявку, отправьте сообщение в формате:\\n\\n<b>Имя Телефон</b>\\n\\n✅ Пример:\\nИван 89991234567\\n\\n📅 Для записи на услугу отправьте:\\n/запись\",\n        chatId: chatId,\n        error: false  // boolean без кавычек\n      }\n    }];\n  }\n\n  // ✨ НОВАЯ КОМАНДА: /запись\n  if (text === '/запись' || text === '/zapis') {\n    return [{\n      json: {\n        isCommand: true,  // boolean без кавычек\n        commandType: 'booking',\n        userName: userName,\n        userId: userId,\n        chatId: chatId,\n        error: false  // boolean без кавычек\n      }\n    }];\n  }\n\n  // Для других команд просто игнорируем\n  return [{\n    json: {\n      isCommand: true,  // boolean без кавычек\n      commandType: 'unknown',\n      commandResponse: \"❓ Неизвестная команда.\\n\\nДоступные команды:\\n/start - инструкция\\n/запись - записаться на услугу\\n\\nИли отправьте заявку в формате:\\nИмя Телефон\",\n      chatId: chatId,\n      error: false  // boolean без кавычек\n    }\n  }];\n}\n\n// Проверка 1: Есть ли вообще текст?\nif (!text || text.trim() === '') {\n  return [{\n    json: {\n      error: true,  // boolean без кавычек\n      errorMessage: \"❌ Вы отправили пустое сообщение!\\n\\n📝 Отправьте заявку в формате:\\nИмя Телефон\\n\\n✅ Пример:\\nИван 89991234567\",\n      chatId: chatId\n    }\n  }];\n}\n\n// Разделяем по пробелу\nconst parts = text.trim().split(/\\s+/);\n\n// Проверка 2: Есть ли минимум 2 части (имя и телефон)?\nif (parts.length < 2) {\n  return [{\n    json: {\n      error: true,  // boolean без кавычек\n      errorMessage: \"❌ Не хватает данных!\\n\\n🔴 Что не так:\\nУказано только одно слово. Нужно указать ИМЯ и ТЕЛЕФОН через пробел.\\n\\n📝 Правильный формат:\\nИмя Телефон\\n\\n✅ Примеры:\\nИван 89991234567\\nМария +7-926-123-45-67\",\n      chatId: chatId\n    }\n  }];\n}\n\nconst name = parts[0];\nconst phoneRaw = parts.slice(1).join(''); // объединяем всё после имени\nconst phone = phoneRaw.replace(/[\\s\\-\\(\\)]/g, ''); // убираем пробелы, дефисы, скобки\n\n// Проверка 3: Похоже ли это на номер телефона?\nconst phoneRegex = /^(\\+?7|8)[\\s\\-]?\\d{3}[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}$/;\n\nif (!phoneRegex.test(phoneRaw)) {\n  let hint = \"\";\n\n  if (phone.length < 10) {\n    hint = `\\n\\n🔴 Что не так:\\nТелефон слишком короткий (${phone.length} цифр). Нужно 11 цифр.`;\n  } else if (phone.length > 11) {\n    hint = `\\n\\n🔴 Что не так:\\nТелефон слишком длинный (${phone.length} цифр). Нужно 11 цифр.`;\n  } else if (!/^\\d+$/.test(phone.replace(/^\\+/, ''))) {\n    hint = `\\n\\n🔴 Что не так:\\nВ номере есть недопустимые символы. Используйте только цифры, +, -, ( )`;\n  } else {\n    hint = `\\n\\n🔴 Что не так:\\nНомер не соответствует российскому формату.`;\n  }\n\n  return [{\n    json: {\n      error: true,  // boolean без кавычек\n      errorMessage: `❌ Неверный формат телефона!${hint}\\n\\n📝 Допустимые форматы:\\n• 89991234567\\n• +79991234567\\n• 8-999-123-45-67\\n• 8 (999) 123-45-67\\n\\n✏️ Попробуйте ещё раз:\\n${name} <исправленный номер>`,\n      chatId: chatId\n    }\n  }];\n}\n\n// Всё ок — нормализуем номер к формату 79991234567\nlet normalizedPhone = phone.replace(/[^\\d]/g, ''); // только цифры\nif (normalizedPhone.startsWith('8')) {\n  normalizedPhone = '7' + normalizedPhone.slice(1);\n}\nif (!normalizedPhone.startsWith('7')) {\n  normalizedPhone = '7' + normalizedPhone;\n}\n\nconst date = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });\n\nreturn [{\n  json: {\n    error: false,      // boolean без кавычек\n    isCommand: false,  // boolean без кавычек\n    name: name,\n    phone: normalizedPhone,\n    date: date,\n    chatId: chatId\n  }\n}];\n\n\n\n\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        304
+      ],
+      "id": "27a22465-40a2-495b-83fc-b8d8c26507ef",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id}}",
+        "text": "=✅ Ваша заявка принята!\n\n━━━━━━━━━━━━━━━━━\n👤 Имя: {{ $('Switch1').item.json.name }}\n📞 Телефон: +{{ $('Switch1').item.json.phone }}\n🕐 Время: {{ $('Switch1').item.json.date }}\n━━━━━━━━━━━━━━━━━\n\n💬 Наш менеджер свяжется с вами в течение 15 минут.\n\nХорошего дня! 😊",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        304
+      ],
+      "id": "812907a8-5e4d-4713-a8f7-002afdead945",
+      "name": "Send a text message",
+      "webhookId": "262302ad-5ed7-43de-a246-b1169de15f74",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.commandResponse || $json.errorMessage }}",
+        "replyMarkup": "replyKeyboard",
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📱 Отправить мой номер",
+                    "additionalFields": {
+                      "request_contact": true
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "replyKeyboardOptions": {},
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        128
+      ],
+      "id": "537750af-521d-4b49-b11d-919f6580fc25",
+      "name": "Send a text message1",
+      "webhookId": "865521a7-bc2e-4455-8f61-c0e938dc73c4",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "<YOUR_ADMIN_CHAT_ID>",
+        "text": "=🔔 Новая заявка!  👤 Имя: {{ $('Append row in sheet').item.json.Имя }} 📞 Телефон: +{{ $('Append row in sheet').item.json.Номер }} 🕐 Время: {{ $('Append row in sheet').item.json.Дата }}  ━━━━━━━━━━━━━━━━━ 📊 Заявка сохранена в таблицу",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Обработана",
+                    "additionalFields": {
+                      "callback_data": "=accept_{{ $('Switch1').item.json.phone }}"
+                    }
+                  },
+                  {
+                    "text": "❌ Отклонить",
+                    "additionalFields": {
+                      "callback_data": "=reject_{{ $('Switch1').item.json.phone }}"
+                    }
+                  },
+                  {
+                    "text": "⏳ В работе",
+                    "additionalFields": {
+                      "callback_data": "=work_{{ $('Switch1').item.json.phone }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        464,
+        304
+      ],
+      "id": "10a938fe-cf33-48d9-b0fd-89f2c6751ac0",
+      "name": "Уведомление админу",
+      "webhookId": "1ee65124-2ea4-4acf-a696-2fec7e95203d",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e5437296-b716-4166-a66a-2d6feee94c8b",
+                    "leftValue": "={{ Boolean($json.message?.contact) === true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Контакт"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "dea6bff6-45c0-416b-a1c6-3250573d2f5c",
+                    "leftValue": "={{ Boolean($json.message?.text) === true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Текст"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "72285e73-a706-43ba-b5ac-8b5f6aa3effb",
+                    "leftValue": "={{ Boolean($json.callback_query) === true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Кнопки"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -368,
+        304
+      ],
+      "id": "c7f08021-b66f-449d-afcb-ae02312b0f8e",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $('Code in JavaScript2').item.json.callbackQueryId }}",
+        "additionalFields": {
+          "text": "="
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        560
+      ],
+      "id": "7db7ada2-42f1-4cc6-9bcf-c35e89f55518",
+      "name": "Answer Query a callback",
+      "webhookId": "7969d301-719d-4908-a69b-40f008554dda",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $('Code in JavaScript2').item.json.chatId }}",
+        "messageId": "={{ $('Code in JavaScript2').item.json.messageId }}",
+        "text": "={{ $('Code in JavaScript2').item.json.replyText }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        656,
+        560
+      ],
+      "id": "df1d139f-d593-4b5b-a4d0-d77c5d123aab",
+      "name": "Edit a text message",
+      "webhookId": "31e318d2-456c-4115-a75e-4d075e61f97a",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные из кнопки\nconst data = $input.first().json.callback_query.data;\nconst message = $input.first().json.callback_query.message;\nconst user = $input.first().json.callback_query.from;\n\n// Разделяем действие и данные\nconst parts = data.split('_');\nconst action = parts[0];\nif (action === \"day\") {\n  return [{\n    json: {\n      type: 'day_select',\n      date: parts[1],\n      chatId: message.chat.id,\n      messageId: message.message_id,\n      callbackQueryId: $input.first().json.callback_query.id\n    }\n  }];\n}\n\n// ✨ ОБРАБОТКА БРОНИРОВАНИЯ (book_2026-01-25_14:00)\nif (action === \"book\") {\n  const date = parts[1];      // \"2026-01-25\"\n  const time = parts[2];      // \"11:00\"\n  \n  const userName = user.first_name || 'Клиент';\n  const userId = user.id;\n  const userHandle = user.username ? `@${user.username}` : '';\n\n  // Простой расчет: парсим часы и добавляем 1\n  const [hours, minutes] = time.split(':');\n  const startHour = parseInt(hours);\n  const endHour = startHour + 1;\n  \n  // Форматируем БЕЗ timezone (Google Calendar node сам добавит его из настроек)\n  const startDateTime = `${date}T${String(startHour).padStart(2, '0')}:${minutes}:00`;\n  const endDateTime = `${date}T${String(endHour).padStart(2, '0')}:${minutes}:00`;\n\n  return [{\n    json: {\n      type: 'booking',\n      start: startDateTime,     // 2026-01-25T11:00:00+03:00\n      end: endDateTime,         // 2026-01-25T12:00:00+03:00\n      datePretty: date,\n      timePretty: time,\n      userName: userName,\n      userId: userId,\n      userHandle: userHandle,\n      userPhone: userHandle || `ID: ${userId}`,\n      callbackQueryId: $input.first().json.callback_query.id,\n      chatId: message.chat.id,\n      messageId: message.message_id\n    }\n  }];\n}\n\n// ОБРАБОТКА СТАТУСОВ (accept/reject/work)\nconst phoneNumber = parts[1];\nlet newStatus = \"\";\nlet replyText = \"\";\n\nif (action === \"accept\") {\n  newStatus = \"Обработана\";\n  replyText = \"✅ Вы приняли заявку от: \" + phoneNumber;\n} else if (action === \"reject\") {\n  newStatus = \"Отклонена\";\n  replyText = \"❌ Вы отклонили заявку от: \" + phoneNumber;\n} else if (action === \"work\") {\n  newStatus = \"В работе\";\n  replyText = \"⏳ Заявка от \" + phoneNumber + \" взята в работу\";\n}\n\nreturn [{\n  json: {\n    type: 'status_update',\n    phoneNumber: phoneNumber,\n    newStatus: newStatus,\n    replyText: replyText,\n    callbackQueryId: $input.first().json.callback_query.id,\n    chatId: message.chat.id,\n    messageId: message.message_id\n  }\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        576
+      ],
+      "id": "0262d9d8-f933-4dbb-8e65-b5040838911b",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7620a631-43a3-4dfe-b6e6-db4e6039ecea",
+                    "leftValue": "={{ $json.error === false && $json.isCommand === false }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Заявки"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a063689e-651e-474b-9a70-193dbc27fa83",
+                    "leftValue": "={{ $json.error }}",
+                    "rightValue": "true",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ошибки"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.commandType === 'booking' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "8007bbbf-a87e-4ed6-bd6e-81cde06a2eac"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Календарь"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "608432aa-4e84-4c4b-8e34-131fc0f696b6",
+                    "leftValue": "={{ $json.isCommand === true && $json.commandType !== 'booking' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Команды"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -16,
+        304
+      ],
+      "id": "a46e5c3c-d797-4ca8-b9c6-3f23ca0d5b5b",
+      "name": "Switch1",
+      "alwaysOutputData": false,
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "<YOUR_CALENDAR_ID>@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Календарь записей"
+        },
+        "timeMin": "={{ DateTime.fromISO($('Code in JavaScript2').item.json.date, { zone: 'Europe/Moscow' }).set({ hour: 10, minute: 0, second: 0 }).toISO() }}",
+        "timeMax": "={{ DateTime.fromISO($('Code in JavaScript2').item.json.date, { zone: 'Europe/Moscow' }).set({ hour: 18, minute: 0, second: 0 }).toISO() }}",
+        "options": {
+          "timeZone": {
+            "__rl": true,
+            "value": "Europe/Moscow",
+            "mode": "list",
+            "cachedResultName": "Europe/Moscow"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        288,
+        -96
+      ],
+      "id": "7aab9ee1-66cd-4a16-ac45-e0b001b49182",
+      "name": "Get many events",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "grJCZM3pqYr1aZ01",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const timeZone = 'Europe/Moscow';\nconst workStart = 10;\nconst workEnd = 18;\n\nconst sel = $('Code in JavaScript2').first().json;\nconst dateIso = sel.date;\nconst chatId = sel.chatId;\n\nconst busySlots = $input.all()\n  .filter(i => i.json.start && i.json.start.dateTime)\n  .map(i => {\n    const d = new Date(new Date(i.json.start.dateTime).toLocaleString('en-US', { timeZone }));\n    return `${String(d.getHours()).padStart(2, '0')}:00`;\n  });\n\nconst allSlots = [];\nfor (let h = workStart; h < workEnd; h++) {\n  allSlots.push(`${String(h).padStart(2, '0')}:00`);\n}\nconst freeSlots = allSlots.filter(s => !busySlots.includes(s));\n\nconst buttons = freeSlots.map(s => ({ text: `🕐 ${s}`, callback_data: `book_${dateIso}_${s}` }));\nconst rows = [];\nwhile (buttons.length) rows.push(buttons.splice(0, 3));\n\nconst pretty = DateTime.fromISO(dateIso).setLocale('ru').toFormat('d MMMM');\n\nreturn [{\n  json: {\n    chatId,\n    text: freeSlots.length > 0\n      ? `📅 ${pretty}\\nВыберите свободное время:`\n      : `❌ На ${pretty} свободного времени нет.`,\n    reply_markup: { inline_keyboard: rows }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -96
+      ],
+      "id": "e877d716-7e58-4041-8eab-98991b26a3f1",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"chat_id\": $json.chatId,\n  \"text\": $json.text,\n  \"reply_markup\": {\n    \"inline_keyboard\": $json.reply_markup.inline_keyboard\n  }\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        640,
+        -96
+      ],
+      "id": "a72cf8ef-3676-433f-9e23-8940c5ec3f45",
+      "name": "HTTP Request",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "status_update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b5feeac5-fd0e-42e3-8aa8-e7764e5b7fe7"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Статус заявки"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ff456aa4-0f86-4a07-b6ef-d26826e083f1",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "booking",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Бронирование"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "359fd2a3-316f-4439-a9ab-f54fd3730236",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "day_select",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Выбор дня"
+            }
+          ]
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        576
+      ],
+      "id": "ac3dbe85-09ba-4365-b4c6-de38f45b9d95",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/<YOUR_CALENDAR_ID>@group.calendar.google.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"summary\": \"Запись — {{ $json.userName }}\",\n  \"description\": \"Клиент: {{ $json.userName }} {{ $json.userHandle }}\\nTelegram ID: {{ $json.userId }}\",\n  \"start\": { \"dateTime\": \"{{ $json.start }}\", \"timeZone\": \"Europe/Moscow\" },\n  \"end\": { \"dateTime\": \"{{ $json.end }}\", \"timeZone\": \"Europe/Moscow\" }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        32,
+        928
+      ],
+      "id": "942052bf-e899-43e2-9954-f5d761b78459",
+      "name": "HTTP Request1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "grJCZM3pqYr1aZ01",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_ID>",
+          "mode": "list",
+          "cachedResultName": "Заявки",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1442010594,
+          "mode": "list",
+          "cachedResultName": "Календарь записей",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Имя": "={{ $('Code in JavaScript2').item.json.userName }}",
+            "ID чата": "={{ $('Code in JavaScript2').item.json.userId }}",
+            "Дата и время записи:": "={{ $('Code in JavaScript2').item.json.datePretty }} в {{ $('Code in JavaScript2').item.json.timePretty }}"
+          },
+          "matchingColumns": [
+            "ID чата"
+          ],
+          "schema": [
+            {
+              "id": "Имя",
+              "displayName": "Имя",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Дата и время записи:",
+              "displayName": "Дата и время записи:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ID чата",
+              "displayName": "ID чата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Статус",
+              "displayName": "Статус",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        928
+      ],
+      "id": "06ba248f-b4e6-42bc-8510-e124b73bd716",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ebwIdDwq12SEoVUh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $('Code in JavaScript2').item.json.callbackQueryId }}",
+        "additionalFields": {
+          "text": "="
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        928
+      ],
+      "id": "a036c8dc-b969-41f3-8b10-0afe68cb620f",
+      "name": "Answer Query a callback1",
+      "webhookId": "7969d301-719d-4908-a69b-40f008554dda",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $('Code in JavaScript2').item.json.chatId }}",
+        "messageId": "={{ $('Code in JavaScript2').item.json.messageId }}",
+        "text": "=✅ Вы записаны!\n\n📅 {{ $('Code in JavaScript2').item.json.datePretty }}\n🕐 {{ $('Code in JavaScript2').item.json.timePretty }}\n\nЖдём вас. Если планы изменятся — напишите нам.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        928
+      ],
+      "id": "3143c4b6-f6b6-48af-8fe7-cc27eea6f721",
+      "name": "Edit a text message1",
+      "webhookId": "31e318d2-456c-4115-a75e-4d075e61f97a",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_ID>",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Лист1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Имя": "={{ $json.name }}",
+            "Номер": "={{ $json.phone }}",
+            "Дата": "={{ $json.date }}",
+            "ID чата": "={{ $json.chatId }}"
+          },
+          "matchingColumns": [
+            "Номер"
+          ],
+          "schema": [
+            {
+              "id": "Имя",
+              "displayName": "Имя",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Номер",
+              "displayName": "Номер",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Дата",
+              "displayName": "Дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ID чата",
+              "displayName": "ID чата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Статус",
+              "displayName": "Статус",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        256,
+        304
+      ],
+      "id": "b6d446fe-7daa-4d29-af08-86589c436f47",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ebwIdDwq12SEoVUh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "<YOUR_SHEET_ID>",
+          "mode": "list",
+          "cachedResultName": "Заявки",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Лист1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Статус": "={{ $json.newStatus }}",
+            "Номер": "={{ $json.phoneNumber }}"
+          },
+          "matchingColumns": [
+            "Номер"
+          ],
+          "schema": [
+            {
+              "id": "Имя",
+              "displayName": "Имя",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Номер",
+              "displayName": "Номер",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Дата",
+              "displayName": "Дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ID чата",
+              "displayName": "ID чата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Статус",
+              "displayName": "Статус",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        560
+      ],
+      "id": "3252e845-0723-4209-98e8-1fd5a8161b84",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ebwIdDwq12SEoVUh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nconst c = msg.contact;\n\nreturn [{\n  json: {\n    name: c.first_name || msg.from.first_name || 'Клиент',\n    phone: String(c.phone_number).replace(/\\D/g, ''),\n    date: new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),\n    chatId: msg.chat.id,\n    error: false,\n    isCommand: false\n  }\n}];\n\n\n\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        144
+      ],
+      "id": "26b37a29-4c5c-4ace-8325-221a16f907ba",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const daysAhead = 7;\nconst timeZone = 'Europe/Moscow';\nconst trigger = $('Telegram Trigger').first().json;\nconst chatId = trigger.message?.chat?.id ?? trigger.callback_query?.message?.chat?.id;\n\nconst buttons = [];\nfor (let i = 1; i <= daysAhead; i++) {\n  const d = new Date();\n  d.setDate(d.getDate() + i);\n  const off = d.getTimezoneOffset() * 60000;\n  const iso = new Date(d.getTime() - off).toISOString().split('T')[0];\n  const label = d.toLocaleDateString('ru-RU', { timeZone, weekday: 'short', day: 'numeric', month: 'short' });\n  buttons.push({ text: label, callback_data: `day_${iso}` });\n}\n\nconst rows = [];\nwhile (buttons.length) rows.push(buttons.splice(0, 2));\n\nreturn [{ json: { chatId, text: '📅 Выберите дату:', reply_markup: { inline_keyboard: rows } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -272
+      ],
+      "id": "801e889d-8709-4298-ad10-c6348fd3b4ef",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callbackQueryId }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        -112
+      ],
+      "id": "7fc29261-a772-4c56-8bda-9725a88cc223",
+      "name": "Answer Query a callback2",
+      "webhookId": "3bc685e4-b5f7-4600-8e2a-80a45af19f6b",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $('Code in JavaScript2').item.json.chatId }}",
+        "messageId": "={{ $('Code in JavaScript2').item.json.messageId }}",
+        "text": "=📅 {{ DateTime.fromISO($('Code in JavaScript2').item.json.date).setLocale('ru').toFormat('d MMMM') }} — выбираю время…",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -272
+      ],
+      "id": "047c16f9-b6c6-4e9b-9ea6-f62ffba7cd70",
+      "name": "Edit a text message2",
+      "webhookId": "31e318d2-456c-4115-a75e-4d075e61f97a",
+      "credentials": {
+        "telegramApi": {
+          "id": "QZASmu8T9cTDISFo",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Уведомление админу": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Query a callback": {
+      "main": [
+        [
+          {
+            "node": "Edit a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Answer Query a callback2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Answer Query a callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Query a callback1": {
+      "main": [
+        [
+          {
+            "node": "Edit a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Уведомление админу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Answer Query a callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Query a callback2": {
+      "main": [
+        [
+          {
+            "node": "Edit a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message1": {
+      "main": [
+        []
+      ]
+    },
+    "Edit a text message2": {
+      "main": [
+        [
+          {
+            "node": "Get many events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "15eb58d0-f46e-47fc-9dbb-7f55082b1ff5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "01454449cc93839c9f457c217668635ce3bca60688b0690766b43b061668fea7"
+  },
+  "nodeGroups": [],
+  "id": "C5je28qudhADSISI",
+  "tags": []
+}
